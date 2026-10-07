@@ -1,7 +1,9 @@
 import React,{useState,useEffect,useRef,useId} from 'react';
 import {createRoot} from 'react-dom/client';
+import {createPortal} from 'react-dom';
 import {supabase,publicOrigin,resolveImages} from './client';
-import {emptyProfile,safeLink,telephone,emailLink,cardUrl,qrSvg,qrPngBlob,shareLink,preferredInstallTab,vcard,saveFile,validateProfile,normalizeProfile} from './lib';
+import {emptyProfile,safeLink,telephone,emailLink,cardUrl,appHomeUrl,qrSvg,qrPngBlob,shareLink,preferredInstallTab,contactFileName,saveFile,validateProfile,normalizeProfile} from './lib';
+import {UPDATE_INTERVAL_MS,canApplyUpdate,clearSucceededAttempt,createVersionMonitor,currentBuildVersion,editorActivity,fetchRemoteVersion,requestUpdate} from './update';
 import './style.css';
 
 const PUBLIC_FIELDS='id,title,profile,avatar_path,logo_path,published';
@@ -147,7 +149,7 @@ function WalletButton({id,compact=false}){
       const type=response.headers.get('content-type')||'';
       if(!response.ok||!type.includes('application/vnd.apple.pkpass')){
         let text='Le pass n’a pas pu être préparé. Réessayez.';
-        try{const data=await response.json();if(typeof data?.error==='string'&&data.error.length<180&&!data.error.includes('<'))text=data.error;}catch{/* réponse non JSON */}
+        try{const data=await response.json();if(typeof data?.error==='string'&&data.error.length<320&&!data.error.includes('<'))text=data.error;}catch{/* réponse non JSON */}
         setNote(text);
         return;
       }
@@ -167,12 +169,12 @@ function Card({card,preview=false}){
   const accent=/^#[0-9a-f]{6}$/i.test(p.accent)?p.accent:'#ff941f';
   const name=holderName(p,'Votre nom');
   async function share(){
-    const result=await shareLink(url,name);
+    const result=await shareLink(appHomeUrl(publicOrigin),name);
     if(result==='copied')setMessage({error:false,text:'Lien copié.'});
     else if(result==='copy-failed')setMessage({error:true,text:'Impossible de partager ou de copier le lien. Ouvrez le QR code pour le sélectionner.'});
     else setMessage(null);
   }
-  return <div className={'card-surface '+(preview?'compact':'')} style={{'--accent':accent}}><article className="business-card"><div className="portrait-panel">{card.avatarUrl?<img className="portrait" src={card.avatarUrl} alt={'Portrait de '+name}/>:<div className="initials">{(p.firstName[0]||'V')+(p.lastName[0]||'N')}</div>}<div className="portrait-caption"><div className="portrait-text"><span>{p.company||'Votre entreprise'}</span>{p.slogan&&<small>{p.slogan}</small>}</div>{card.logoUrl&&<img src={card.logoUrl} alt={'Logo '+p.company}/>}</div></div><div className="card-content"><p className="eyebrow">{p.role||'Votre activité'}{p.company?' · '+p.company:''}</p><h1>{p.firstName||'Votre'} <span>{p.lastName||'nom'}</span></h1>{p.tagline&&<p className="intro">{p.tagline}</p>}<button className="button primary" disabled={preview} onClick={()=>saveFile(vcard(p,url),'contact.vcf','text/vcard;charset=utf-8')}><Icon name="contact"/>Enregistrer mon contact</button><div className="contact-list">{p.phone&&<a href={preview?undefined:'tel:'+telephone(p.phone)} className="contact-row"><Icon name="phone"/><span><small>Téléphone</small>{p.phone}</span></a>}{p.email&&<a href={preview?undefined:emailLink(p.email)} className="contact-row"><Icon name="mail"/><span><small>E-mail</small>{p.email}</span></a>}{(p.street||p.city)&&<div className="contact-row"><Icon name="pin"/><span><small>Adresse</small>{p.street}<br/>{[p.postal,p.city].filter(Boolean).join(' ')}{p.country&&p.country!=='France'?<><br/>{p.country}</>:null}</span></div>}</div><div className="socials">{[['website','Site web'],['linkedin','LinkedIn'],['github','GitHub']].map(([key,label])=>safeLink(p[key])&&<a key={key} href={preview?undefined:safeLink(p[key])} target="_blank" rel="noopener noreferrer">{label}<Icon name="external"/></a>)}</div></div></article>{!preview&&<div className="sharebar"><div><strong>Gardons le contact.</strong><p>Une rencontre. De nouvelles idées.</p></div><div className="actions"><button type="button" className="button secondary qr-launch" onClick={()=>setQr(true)}><Icon name="qr"/>Mon QR code</button><button type="button" className="button secondary icon-button" onClick={share} aria-label="Partager la carte"><Icon name="share"/></button></div><WalletButton id={card.id}/></div>}{!preview&&<Feedback feedback={message}/>}{qr&&<QrModal id={card.id} name={name} onClose={()=>setQr(false)}/>}</div>;
+  return <div className={'card-surface '+(preview?'compact':'')} style={{'--accent':accent}}><article className="business-card"><div className="portrait-panel">{card.avatarUrl?<img className="portrait" src={card.avatarUrl} alt={'Portrait de '+name}/>:<div className="initials">{(p.firstName[0]||'V')+(p.lastName[0]||'N')}</div>}<div className="portrait-caption"><div className="portrait-text"><span>{p.company||'Votre entreprise'}</span>{p.slogan&&<small>{p.slogan}</small>}</div>{card.logoUrl&&<img src={card.logoUrl} alt={'Logo '+p.company}/>}</div></div><div className="card-content"><p className="eyebrow">{p.role||'Votre activité'}{p.company?' · '+p.company:''}</p><h1>{p.firstName||'Votre'} <span>{p.lastName||'nom'}</span></h1>{p.tagline&&<p className="intro">{p.tagline}</p>}{preview?<button className="button primary" disabled><Icon name="contact"/>Enregistrer mon contact</button>:<a className="button primary" href={'/c/'+card.id+'/contact.vcf'} download={preferredInstallTab(navigator.userAgent,{platform:navigator.platform,maxTouchPoints:navigator.maxTouchPoints})==='ios'?undefined:contactFileName(p)}><Icon name="contact"/>Enregistrer mon contact</a>}<div className="contact-list">{p.phone&&<a href={preview?undefined:'tel:'+telephone(p.phone)} className="contact-row"><Icon name="phone"/><span><small>Téléphone</small>{p.phone}</span></a>}{p.email&&<a href={preview?undefined:emailLink(p.email)} className="contact-row"><Icon name="mail"/><span><small>E-mail</small>{p.email}</span></a>}{(p.street||p.city)&&<div className="contact-row"><Icon name="pin"/><span><small>Adresse</small>{p.street}<br/>{[p.postal,p.city].filter(Boolean).join(' ')}{p.country&&p.country!=='France'?<><br/>{p.country}</>:null}</span></div>}</div><div className="socials">{[['website','Site web'],['linkedin','LinkedIn'],['github','GitHub']].map(([key,label])=>safeLink(p[key])&&<a key={key} href={preview?undefined:safeLink(p[key])} target="_blank" rel="noopener noreferrer">{label}<Icon name="external"/></a>)}</div></div></article>{!preview&&<div className="sharebar"><div><strong>Gardons le contact.</strong><p>Une rencontre. De nouvelles idées.</p></div><div className="actions"><button type="button" className="button secondary qr-launch" onClick={()=>setQr(true)}><Icon name="qr"/>Mon QR code</button><button type="button" className="button secondary icon-button" onClick={share} aria-label="Partager la carte"><Icon name="share"/></button></div></div>}{!preview&&<Feedback feedback={message}/>}{qr&&<QrModal id={card.id} name={name} onClose={()=>setQr(false)}/>}</div>;
 }
 
 function PasswordField({value,onChange,autoComplete,minLength,hint}){
@@ -203,6 +205,7 @@ function Editor({initial,user,onClose,onSaved}){
   const {confirm,dialog}=useConfirm();
   const p=card.profile;
   useEffect(()=>{const guard=e=>{if(dirty){e.preventDefault();e.returnValue=''}};window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard)},[dirty]);
+  useEffect(()=>{editorActivity.set({dirty,busy});return()=>editorActivity.clear()},[dirty,busy]);
   function change(key,value){setCard(c=>({...c,profile:{...c.profile,[key]:value}}));setDirty(true)}
   async function upload(kind,file){if(!file)return;setError('');if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>5*1024*1024){setError('Choisissez une image JPG, PNG ou WebP de moins de 5 Mo.');return}setBusy(true);const path=user.id+'/'+card.id+'/'+kind+'-'+crypto.randomUUID()+'.'+({ 'image/png':'png','image/jpeg':'jpg','image/webp':'webp'}[file.type]);try{const {error}=await supabase.storage.from('card-images').upload(path,file,{contentType:file.type,upsert:false});if(error)throw error;const {data,error:signError}=await supabase.storage.from('card-images').createSignedUrl(path,120);if(signError)throw signError;setCard(c=>({...c,[kind+'_path']:path,[kind+'Url']:data.signedUrl}));setDirty(true);setNotice('Image ajoutée. Enregistrez la carte pour appliquer ce changement.')}catch(e){setError(e.message)}finally{setBusy(false)}}
   async function save(e){e.preventDefault();const invalid=validateProfile(p);if(invalid){setError(invalid);return}setBusy(true);setError('');try{const payload={title:card.title,profile:p,published:card.published,avatar_path:card.avatar_path||null,logo_path:card.logo_path||null};const {data,error}=await supabase.from('cards').update(payload).eq('id',card.id).eq('owner_id',user.id).select().single();if(error)throw error;setDirty(false);setNotice('Carte enregistrée.');onSaved(data)}catch(e){setError(e.message)}finally{setBusy(false)}}
@@ -233,8 +236,7 @@ function Dashboard({user}){
     setBusy(false);
   }
   async function shareCard(c){
-    const url=cardUrl(c.id,publicOrigin);
-    const result=await shareLink(url,holderName(c.profile,c.title));
+    const result=await shareLink(appHomeUrl(publicOrigin),holderName(c.profile,c.title));
     if(result==='copied')setShareNote({error:false,text:'Lien copié.'});
     else if(result==='copy-failed')setShareNote({error:true,text:'Impossible de partager ou de copier le lien. Ouvrez le QR code pour le sélectionner.'});
     else setShareNote(null);
@@ -271,6 +273,74 @@ function PublicCard({id}){
 }
 
 function Setup(){return <section className="panel auth-panel"><p className="eyebrow">INSTALLATION</p><h1>JavaChrist Cards est prêt à être connecté.</h1><p>Configurez Supabase et les deux variables indiquées dans le fichier README du projet, puis relancez le déploiement.</p><p className="muted">Les comptes et les cartes seront enregistrés dans votre propre projet Supabase.</p></section>}
+function UpdatePrompt(){
+  const dev=import.meta.env.DEV;
+  const [status,setStatus]=useState({remote:null,open:false,dismissed:null});
+  const [activity,setActivity]=useState(()=>editorActivity.get());
+  const [notice,setNotice]=useState('');
+  const monitorRef=useRef(null);
+  useEffect(()=>editorActivity.subscribe(setActivity),[]);
+  useEffect(()=>{
+    if(dev)return undefined;
+    const current=currentBuildVersion();
+    try{clearSucceededAttempt(sessionStorage,current)}catch{/* sessionStorage indisponible */}
+    let storage=null;
+    try{storage=sessionStorage}catch{storage=null}
+    const monitor=createVersionMonitor({
+      current,
+      dev:false,
+      fetchVersion:()=>fetchRemoteVersion(fetch),
+      now:()=>Date.now(),
+      visible:()=>document.visibilityState!=='hidden',
+      onStatus:setStatus,
+      storage,
+    });
+    monitorRef.current=monitor;
+    monitor.check('start');
+    const timer=setInterval(()=>monitor.check('interval'),UPDATE_INTERVAL_MS);
+    const onForeground=()=>{if(document.visibilityState!=='hidden')monitor.check('visible')};
+    document.addEventListener('visibilitychange',onForeground);
+    window.addEventListener('pageshow',onForeground);
+    return()=>{
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange',onForeground);
+      window.removeEventListener('pageshow',onForeground);
+    };
+  },[dev]);
+  if(dev||!status.remote)return null;
+  const gate=canApplyUpdate(activity);
+  const unsaved=gate.reason==='dirty';
+  async function apply(){
+    if(!canApplyUpdate(editorActivity.get()).ok)return;
+    setNotice('');
+    let storage;
+    try{storage=sessionStorage}catch{setNotice('La mise à jour n’a pas pu démarrer. Réessayez.');return}
+    try{
+      const result=await requestUpdate({
+        remote:status.remote,
+        now:Date.now(),
+        storage,
+        reload:()=>location.reload(),
+        serviceWorker:'serviceWorker' in navigator?navigator.serviceWorker:null,
+        getRegistration:()=>navigator.serviceWorker.getRegistration(),
+      });
+      if(result==='guard')setNotice('La nouvelle version n’a pas encore été chargée. Réessayez dans un instant.');
+    }catch{setNotice('La mise à jour n’a pas pu démarrer. Réessayez.')}
+  }
+  const dialog=status.open?<Modal title="Une mise à jour est disponible" onClose={()=>monitorRef.current?.postpone()} focusSelector={unsaved||gate.ok?'.update-primary':'.update-later'}>
+      <p>{unsaved?'Vous avez des modifications non enregistrées. Enregistrez-les avant de mettre à jour.':'Une nouvelle version de JavaChrist Cards est prête. Actualisez l’application pour en profiter.'}</p>
+      {gate.reason==='busy'&&<p className="notice update-wait" role="status">Un enregistrement est en cours. La mise à jour attendra sa fin.</p>}
+      {notice&&<p className="notice update-wait" role="status">{notice}</p>}
+      <div className="modal-actions">
+        {unsaved?<button type="button" className="button primary update-primary" onClick={()=>monitorRef.current?.postpone()}>Revenir à l’éditeur</button>:<button type="button" className="button primary update-primary" disabled={!gate.ok} onClick={apply}>Mettre à jour</button>}
+        <button type="button" className="button secondary update-later" onClick={()=>monitorRef.current?.postpone()}>Plus tard</button>
+      </div>
+    </Modal>:null;
+  return <>
+    {!status.open&&<button type="button" className="text-button update-available" onClick={()=>{setNotice('');monitorRef.current?.reopen()}}>Mise à jour disponible</button>}
+    {dialog&&createPortal(dialog,document.body)}
+  </>;
+}
 function App(){
   const [user,setUser]=useState(null),[ready,setReady]=useState(false),[error,setError]=useState('');
   const path=location.pathname;
@@ -281,6 +351,6 @@ function App(){
     const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setUser(session?.user||null);setReady(true)});
     return()=>data.subscription.unsubscribe();
   },[]);
-  return <div className={'shell'+(publicId?' public-shell':'')}><header className="topbar"><a className="brand" href={user?'/app':'/'}><img src="/assets/logo.png" alt=""/>{publicId?'JavaChrist.':<>JavaChrist <span>Cards.</span></>}</a>{publicId?<p className="card-kicker">Carte de contact</p>:user&&<button type="button" className="text-button" onClick={async()=>{const {error}=await supabase.auth.signOut();if(error)setError(error.message);else location.assign('/auth')}}>Déconnexion</button>}</header><main><ErrorText>{error}</ErrorText>{!supabase?<Setup/>:publicId?<PublicCard id={publicId}/>:path.startsWith('/c/')?<section className="panel"><h1>Lien de carte invalide.</h1></section>:!ready?<p role="status">Chargement…</p>:path==='/reset-password'?<Auth recovery/>:(path==='/forgot-password'||path==='/forgot-password/')?<Auth forgot/>:user?<Dashboard user={user}/>:<Auth/>}</main>{!publicId&&<footer><span>JavaChrist Cards</span><span>Votre identité, en un scan.</span></footer>}</div>;
+  return <div className={'shell'+(publicId?' public-shell':'')}><header className="topbar"><a className="brand" href={user?'/app':'/'}><img src="/assets/logo.png" alt=""/>{publicId?'JavaChrist.':<>JavaChrist <span>Cards.</span></>}</a><div className="topbar-end">{publicId&&<p className="card-kicker">Carte de contact</p>}<UpdatePrompt/>{!publicId&&user&&<button type="button" className="text-button" onClick={async()=>{const {error}=await supabase.auth.signOut();if(error)setError(error.message);else location.assign('/auth')}}>Déconnexion</button>}</div></header><main><ErrorText>{error}</ErrorText>{!supabase?<Setup/>:publicId?<PublicCard id={publicId}/>:path.startsWith('/c/')?<section className="panel"><h1>Lien de carte invalide.</h1></section>:!ready?<p role="status">Chargement…</p>:path==='/reset-password'?<Auth recovery/>:(path==='/forgot-password'||path==='/forgot-password/')?<Auth forgot/>:user?<Dashboard user={user}/>:<Auth/>}</main>{!publicId&&<footer><span>JavaChrist Cards</span><span>Votre identité, en un scan.</span></footer>}</div>;
 }
 createRoot(document.getElementById('root')).render(<App/>);

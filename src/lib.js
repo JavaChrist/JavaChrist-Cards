@@ -20,6 +20,7 @@ export function publicOriginFrom(configured, fallbackOrigin) {
 }
 
 export function cardUrl(id, origin) { return new URL('/c/'+encodeURIComponent(id), origin).href; }
+export function appHomeUrl(origin) { return new URL('/', origin || 'https://java-christ-cards.vercel.app').href; }
 
 function makeQr(url) {
   const qr = qrcode(0, 'M');
@@ -147,11 +148,39 @@ export function preferredInstallTab(userAgent = '', hints = {}) {
 }
 
 function esc(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/\r\n|\r|\n/g,'\\n').replace(/;/g,'\\;').replace(/,/g,'\\,'); }
-export function vcard(p,url) {
-  const lines=['BEGIN:VCARD','VERSION:3.0',`N:${esc(p.lastName)};${esc(p.firstName)};;;`,`FN:${esc([p.firstName,p.lastName].filter(Boolean).join(' '))}`,`ORG:${esc(p.company)}`,`TITLE:${esc(p.role)}`,`TEL;TYPE=CELL:${esc(p.phone)}`,`EMAIL;TYPE=INTERNET:${esc(p.email)}`,`ADR;TYPE=WORK:;;${esc(p.street)};${esc(p.city)};;${esc(p.postal)};${esc(p.country)}`,`NOTE:${esc(p.tagline)}`,`URL:${esc(url)}`];
-  for (const link of [p.website,p.linkedin,p.github]) if (safeLink(link)) lines.push('URL:'+esc(safeLink(link)));
+function fold(line) {
+  const parts = [];
+  let part = '';
+  for (const c of line) {
+    if (new TextEncoder().encode(part + c).length > 75) { parts.push(part); part = ' ' + c; }
+    else part += c;
+  }
+  parts.push(part);
+  return parts.join('\r\n');
+}
+export function contactFileName(profile) {
+  const base = [profile?.firstName, profile?.lastName].filter(Boolean).join('-')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9.-]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+  return (base || 'contact') + '.vcf';
+}
+export function vcard(p, url, photo) {
+  const lines = ['BEGIN:VCARD', 'VERSION:3.0'];
+  const name = [p.firstName, p.lastName].filter(Boolean).join(' ');
+  lines.push(`N;CHARSET=UTF-8:${esc(p.lastName)};${esc(p.firstName)};;;`);
+  lines.push(`FN;CHARSET=UTF-8:${esc(name)}`);
+  if (p.company) lines.push(`ORG;CHARSET=UTF-8:${esc(p.company)}`);
+  if (p.role) lines.push(`TITLE;CHARSET=UTF-8:${esc(p.role)}`);
+  const phone = telephone(p.phone);
+  if (phone) lines.push(`TEL;TYPE=CELL:${esc(phone)}`);
+  if (p.email) lines.push(`EMAIL;TYPE=INTERNET:${esc(p.email)}`);
+  if (p.street || p.postal || p.city) lines.push(`ADR;TYPE=WORK;CHARSET=UTF-8:;;${esc(p.street)};${esc(p.city)};;${esc(p.postal)};${esc(p.country)}`);
+  if (p.tagline) lines.push(`NOTE;CHARSET=UTF-8:${esc(p.tagline)}`);
+  if (photo?.base64 && /^(JPEG|PNG)$/.test(photo.type)) lines.push(`PHOTO;ENCODING=b;TYPE=${photo.type}:${photo.base64}`);
+  for (const link of [p.website, p.linkedin, p.github]) if (safeLink(link)) lines.push('URL:' + esc(safeLink(link)));
+  if (url) lines.push('URL:' + esc(url));
   lines.push('END:VCARD');
-  return lines.map(line=>{const parts=[];let part='';for(const c of line){if(new TextEncoder().encode(part+c).length>75){parts.push(part);part=' '+c;}else part+=c;}parts.push(part);return parts.join('\r\n');}).join('\r\n')+'\r\n';
+  return lines.map(fold).join('\r\n') + '\r\n';
 }
 export function saveFile(data,name,type) {
   const blob = data instanceof Blob ? data : new Blob([data], { type });
