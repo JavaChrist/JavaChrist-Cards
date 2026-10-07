@@ -50,3 +50,11 @@ footer{flex-wrap:wrap}
 .portrait-text{display:flex;flex-direction:column;gap:3px;min-width:0}
 .portrait-text>span{font-size:14px;font-weight:700;letter-spacing:.07em;overflow-wrap:anywhere}
 .portrait-text small{font-size:11px;font-weight:700;letter-spacing:.08em;line-height:1.35;overflow-wrap:anywhere}
+.public-shell .wallet-launch{width:100%;min-height:52px;border-radius:14px;background:#2a2e34;border-color:#3a3f46}
+.password-field{position:relative;display:block;margin-top:8px}
+.password-field input{margin-top:0;padding-right:3.1rem}
+.password-toggle{position:absolute;top:0;right:.15rem;display:grid;place-items:center;width:2.6rem;height:100%;padding:0;border:0;background:transparent;color:#9aa4b2}
+.password-toggle:hover{color:#f3f4f5}
+.password-toggle svg{width:20px;height:20px}
+.auth-links a{padding:9px 0;color:#c8cbd1;font-size:14px;text-decoration:underline;text-underline-offset:4px}
+.auth-links a:hover{color:white}

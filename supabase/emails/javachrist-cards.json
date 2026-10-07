@@ -1,0 +1,8 @@
+{
+  "appName": "JavaChrist Cards",
+  "logoUrl": "https://java-christ-cards.vercel.app/assets/logo.png",
+  "siteUrl": "https://java-christ-cards.vercel.app",
+  "supportEmail": "contact@javachrist.fr",
+  "accent": "#ff941f",
+  "passwordResetPath": "/forgot-password"
+}

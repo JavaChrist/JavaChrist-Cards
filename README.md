@@ -11,6 +11,7 @@ Application indépendante de création de cartes de visite numériques. À dépl
 - Pages publiques `/c/IDENTIFIANT` sans authentification dans l'application.
 - QR généré dans le navigateur, export PNG et SVG. Aucun générateur externe, aucun QR lié à ChatGPT.
 - Lien stable : les changements de coordonnées ne changent pas l'identifiant ni le QR. Le domaine doit rester identique.
+- Ajout à Apple Wallet : le pass contient le QR du lien public de cette carte.
 - Fichier vCard pour enregistrer le contact ; partage natif lorsque le navigateur le permet.
 - Import/export des coordonnées en JSON. Aucun paiement ni abonnement implémenté.
 
@@ -21,7 +22,18 @@ Le nom JavaChrist Cards est modifiable. L'apparence anthracite/orange reprend la
 1. Créer un **nouveau projet Supabase dédié**. Le code ne se connecte à aucun projet existant par défaut.
 2. Exécuter `supabase/schema.sql` une fois dans son SQL Editor. La migration est transactionnelle ; elle crée `cards`, le bucket privé `card-images`, les règles RLS et un garde-fou empêchant de changer le propriétaire ou l'identifiant d'une carte.
 3. Dans Authentication, activer e-mail/mot de passe et la confirmation d'e-mail. Définir une longueur minimale de mot de passe de 12 caractères côté Supabase aussi.
-4. Configurer un SMTP pour les e-mails d'inscription et de récupération destinés au public. Le service d'e-mail de test de Supabase peut limiter les destinataires et les envois.
+4. Configurer un SMTP pour les e-mails d'inscription et de récupération destinés au public. Le service d'e-mail de test de Supabase peut limiter les destinataires et les envois. Les modèles de [JavaChrist Mail Kit](https://github.com/JavaChrist-apps/JavaChrist-Mail-Kit), adaptés à cette application, sont dans `supabase/emails/`. Coller chaque HTML dans Authentication → Emails, et le sujet indiqué dans le commentaire `Sujet :`.
+
+   | Fichier | Écran Supabase |
+   | --- | --- |
+   | `confirmation.html` | Confirm sign up |
+   | `reset-password.html` | Reset password |
+   | `magic-link.html` | Magic link |
+   | `invite.html` | Invite user |
+   | `change-email.html` | Change email address |
+   | `password-changed.html` | Password changed |
+
+   `password-changed.html` n'est envoyé que si la notification est activée. Son bouton ouvre `/forgot-password`. Le logo pointe vers `https://java-christ-cards.vercel.app/assets/logo.png`. Régénérer avec `npm run emails` après un changement dans `supabase/emails/javachrist-cards.json`. L'expéditeur SMTP conseillé est `JavaChrist Cards by JavaChrist`.
 5. Dans les paramètres API du projet, récupérer l'URL et la **clé publishable** (ou ancienne clé publique anon). Ne jamais utiliser de clé secret/service_role dans le navigateur ou une variable VITE.
 
 ## Développement local
@@ -41,7 +53,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=VOTRE-CLE-PUBLIQUE
 VITE_PUBLIC_APP_URL=http://localhost:5173
 ```
 
-Ajouter `http://localhost:5173/app` et `http://localhost:5173/reset-password` dans les URL de redirection autorisées de Supabase Auth.
+Ajouter `http://localhost:5173/app` et `http://localhost:5173/reset-password` dans les URL de redirection autorisées de Supabase Auth. La demande de lien est sur `/forgot-password` ; le formulaire du nouveau mot de passe reste sur `/reset-password`.
 
 ```powershell
 npm run dev
@@ -53,12 +65,28 @@ npm run dev
 2. Vercel → Add New → Project → importer ce dépôt. Framework **Vite**, Build `npm run build`, Output `dist`. `vercel.json` est fourni.
 3. Ajouter les deux variables `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY` pour la production. Déployer.
 4. Noter le domaine **de production stable** (par exemple le domaine attribué par Vercel ou votre domaine personnalisé). Ne pas utiliser l'URL temporaire d'un déploiement pour imprimer les QR.
-5. Ajouter `VITE_PUBLIC_APP_URL=https://VOTRE-DOMAINE-STABLE` puis redéployer. Sans cette variable, le QR utilise l'origine actuelle du navigateur.
-6. Supabase Auth → URL Configuration : Site URL = ce domaine ; Redirect URLs = `https://VOTRE-DOMAINE-STABLE/app` et `https://VOTRE-DOMAINE-STABLE/reset-password`.
+5. Ajouter `VITE_PUBLIC_APP_URL=https://java-christ-cards.vercel.app` puis redéployer. Sans cette variable, le QR utilise l'origine actuelle du navigateur.
+6. Supabase Auth → URL Configuration : Site URL = `https://java-christ-cards.vercel.app` ; Redirect URLs = `https://java-christ-cards.vercel.app/app` et `https://java-christ-cards.vercel.app/reset-password`. La page `/forgot-password` sert à demander le lien.
 7. Vérifier que le domaine de production Vercel est accessible au public. Les protections des déploiements de prévisualisation peuvent rester actives. Aucune configuration ne désactive les protections d'autres projets.
 8. Ouvrir une carte publiée depuis un navigateur privé, non connecté à Vercel, Supabase ou ChatGPT. Elle doit s'afficher sans connexion.
 
-Les variables VITE sont intégrées lors du build : tout changement nécessite un redéploiement. Aucun secret serveur n'est requis par cette application.
+Les variables VITE sont intégrées lors du build : tout changement nécessite un redéploiement.
+
+## Apple Wallet
+
+Le bouton « Ajouter à Apple Wallet » est sur la carte publique et sur chaque carte publiée du tableau de bord. Sur iPhone, le fichier s’ouvre dans Cartes. Le QR du pass est le lien `/c/IDENTIFIANT` de cette carte.
+
+Apple n’accepte qu’un pass signé. Créer un identifiant Pass Type ID, puis renseigner ces variables **sur le serveur** (Vercel), jamais dans le code du navigateur et jamais avec le préfixe `VITE_` :
+
+```dotenv
+APPLE_PASS_TYPE_ID=pass.fr.javachrist.cards
+APPLE_TEAM_ID=VOTRETEAMID
+APPLE_PASS_CERT_PEM=
+APPLE_PASS_KEY_PEM=
+APPLE_PASS_KEY_PASSPHRASE=
+```
+
+Le certificat et la clé privée peuvent être collés en PEM, ou en base64 du PEM. `APPLE_WWDR_PEM` reste vide : le certificat public Apple G4 ou G6 est déjà inclus, et il est choisi selon l’émetteur du certificat de signature. Sans ces variables, le bouton indique que l’ajout n’est pas encore activé. Aucun certificat privé n’est enregistré dans le dépôt.
 
 ## Créer la carte de Christian
 

@@ -161,4 +161,5 @@ test('each card manifest launches that card, and the management manifest launche
   assert.ok(sources.includes('/app/manifest.webmanifest'));
   assert.ok(sources.includes('/c/:id/'));
   assert.ok(sources.includes('/app/'));
+  assert.ok(sources.includes('/forgot-password'));
 });
