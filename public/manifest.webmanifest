@@ -1,0 +1,18 @@
+{
+  "name": "JavaChrist Cards",
+  "short_name": "Cards",
+  "id": "./",
+  "start_url": "./",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111315",
+  "theme_color": "#111315",
+  "icons": [
+    {
+      "src": "/assets/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

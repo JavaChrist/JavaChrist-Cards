@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111315">
+<meta name="description" content="Créez et partagez votre carte de visite numérique.">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="JavaChrist Cards">
+<title>JavaChrist Cards</title>
+<link rel="icon" href="/assets/logo.png">
+<link rel="apple-touch-icon" href="/assets/logo.png">
+<script>
+(function () {
+  var card = location.pathname.match(/^\/c\/([0-9a-f-]{36})\/?$/i);
+  var link = document.createElement('link');
+  link.rel = 'manifest';
+  link.href = card ? '/c/' + card[1] + '/manifest.webmanifest' : '/app/manifest.webmanifest';
+  document.head.appendChild(link);
+})();
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
